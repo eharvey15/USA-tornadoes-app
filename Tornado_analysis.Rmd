@@ -1,0 +1,277 @@
+---
+title: 'Winds of change: Analyzing 70 years of Tornado data in the US'
+author: "Edward Harvey"
+date: "`r Sys.Date()`"
+output:
+  slidy_presentation:
+    theme: "default"
+    keep_tex: true
+    #incremental: true
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r, include=FALSE}
+# Load required packages
+library(tidyverse)
+library(plotly)
+library(shiny)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(RColorBrewer)
+
+
+setwd("/Users/faculty/Documents/UMASS/STAT 697V/Final Presentation")
+
+# Load the tornado dataset
+df <- read.csv("us_tornado_dataset_1950_2021.csv")
+
+df$date <- ymd(df$date)
+
+state_avg_temp <- readRDS("state_avg_temp.rds")
+states <- c("AK", "AL", "AR", "AZ", "CA", "CO", "CT", "DE", "FL", "GA", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY")
+
+
+
+
+state_avg_temp_long <- pivot_longer(state_avg_temp, cols = c(states), values_to = "avg_temp", names_to = "st")
+
+
+df <- left_join(x = df, y = state_avg_temp_long, by = c("yr", "st"))
+
+df$avg_temp <- as.numeric(df$avg_temp)
+
+#group by decade
+df$decade <- paste0(substr(df$yr,1,3),0, "s")
+
+saveRDS(df, "df_cleaned.rds")
+
+
+
+```
+
+# Research questions:
+
+Climate scientists have warned that climate change could cause more severe storms. In the US, tornados cause massive destruction each year. 
+
+- Have measures of severity gotten worse over time?
+- Do rising temperatures predict more severe storms?
+- Has the geographic distribution of storms changed?
+
+# The dataset
+
+70 years of tornado records (1950 to 2021) across the US including variables about date, location, severity, and casualties. Accessed from [kaggle.com](https://www.kaggle.com/datasets/danbraswell/us-tornado-dataset-1950-2021).
+
+```{r}
+kable(head(df)) %>% kable_styling(font_size = 18, full_width = TRUE)
+```
+
+
+```{r, include=FALSE}
+
+
+df_by_decade <- df %>% filter(mag >-1) %>% group_by(decade, mag) %>% summarise(mag = mean(mag),
+                                                      fat = sum(fat),
+                                                      inj = sum(inj),
+                                                      wid = mean(wid),
+                                                      len = mean(len),
+                                                      count = n()) %>% ungroup()
+
+
+
+saveRDS(df_by_decade, "df_by_decade.rds")
+```
+
+# Exploring tornado frequency
+
+It appears that tornadoes have become a more frequent occurrence in recent decades. (Note: the 2020s are not yet complete).
+
+```{r, out.width="90%"}
+#frequency plot
+freq_by_decade <- plot_ly(data =df_by_decade) %>% 
+  add_trace(x=~decade,
+            y=~count,
+            name = "Total",
+            type = "bar")
+
+freq_by_decade_split <- plot_ly(data =df_by_decade) %>% 
+  add_trace(x=~decade,
+            y=~count,
+            type = "bar",
+            split = ~mag)
+
+
+subplot(freq_by_decade, freq_by_decade_split, nrows = 2)
+
+```
+
+
+# Fatalities have declined
+
+```{r, out.width="90%"}
+fat_by_decade <- plot_ly(data = df_by_decade) %>% 
+  add_trace(x = ~decade,
+            y= ~fat,
+            name = "Total",
+            type = "bar")
+
+fat_by_decade_split <- plot_ly(data = df_by_decade) %>% 
+  add_trace(x = ~decade,
+            y= ~fat,
+            type = "bar",
+            split = ~mag)
+
+subplot(fat_by_decade, fat_by_decade_split, nrows = 2)
+
+```
+
+# Injuries have also declined
+
+```{r, out.width="90%"}
+inj_by_decade <- plot_ly(data = df_by_decade) %>% 
+  add_trace(x = ~decade,
+            y= ~inj,
+            name = "Total",
+            type = "bar")
+
+inj_by_decade_split <- plot_ly(data = df_by_decade) %>% 
+  add_trace(x = ~decade,
+            y= ~inj,
+            type = "bar",
+            split = ~mag)
+
+
+subplot(inj_by_decade, inj_by_decade_split, nrows=2)
+```
+
+# Storm width is increasing, track length is not
+
+```{r, out.width="90%"}
+wid_over_time <- plot_ly(data = df_by_decade) %>% 
+  add_trace(x = ~decade,
+            y = ~wid,
+            name = "width",
+            type = "bar")
+
+len_over_time <- plot_ly(data = df_by_decade) %>% 
+  add_trace(x = ~decade,
+            y = ~len,
+            name = "length",
+            type = "bar")
+
+subplot(wid_over_time, len_over_time, nrows = 2)
+
+
+```
+
+# Force category across the decades
+
+A chi square test for homogeneity gives significant results, but heatmap visualization casts doubt on whether we should reject the null hypothesis. 
+
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+shinyAppFile("chi2app.R")
+```
+
+
+# Average temperatures and tornado counts are rising
+```{r, warning = FALSE, message=FALSE, out.width="90%"}
+
+US_by_year <- df %>% filter(mag >-1) %>% group_by(yr) %>% summarise(mag = mean(mag),
+                                                      fat = sum(fat),
+                                                      inj = sum(inj),
+                                                      wid = mean(wid),
+                                                      len = mean(len),
+                                                      avg_temp = mean(avg_temp, na.rm = TRUE),
+                                                      count = n()) %>% ungroup()
+
+
+#temperature over time
+temp_model <- lm(data = US_by_year, avg_temp ~ yr)
+pred_temp <- predict.lm(temp_model, newdata = US_by_year)
+
+
+
+temp_over_time <- plot_ly(data = US_by_year) %>% 
+  add_markers(x = ~yr, y = ~avg_temp, type = "scatter", name = "average temperature") %>% 
+  add_trace(x = ~yr, y = ~pred_temp, mode = "lines", showlegend = FALSE) 
+
+
+count_over_time <- plot_ly(data = US_by_year) %>% 
+  add_markers(x = ~yr, y = ~count, type = "scatter", name = "count")
+
+subplot(temp_over_time, count_over_time, nrows = 2)
+```
+
+
+# No clear relationship between temperature and tornado frequency
+```{r, out.width="90%"}
+
+
+plot_ly(data = US_by_year) %>% 
+  add_markers(x = ~avg_temp, y = ~count, type = "scatter", name = "count") %>% 
+  add_paths(x = ~avg_temp, y = ~count)
+```
+
+
+# Width increases with temperature (yearly)
+```{r, warning = FALSE, message=FALSE, out.width="90%"}
+#width vs temperature
+wid_model <- lm(data = US_by_year, wid ~ avg_temp)
+pred_wid <- predict.lm(wid_model, newdata = US_by_year)
+
+wid_v_temp <- plot_ly(data = US_by_year) %>%
+  add_markers(x = ~avg_temp, y=~wid, type = "scatter", name = "width") %>%
+  add_trace(x = ~avg_temp, y = ~pred_wid, mode = "lines", showlegend = FALSE)
+
+#length vs temperature
+len_model <- lm(data = US_by_year, len ~ avg_temp)
+pred_len <- predict.lm(len_model, newdata = US_by_year)
+
+len_v_temp <- plot_ly(data = US_by_year) %>%
+  add_markers(x = ~avg_temp, y=~len, type = "scatter", name = "length") %>%
+  add_trace(x = ~avg_temp, y = ~pred_len, mode = "lines", showlegend = FALSE)
+
+#magnitude vs temperature
+mag_model <- lm(data = US_by_year, mag ~ avg_temp)
+pred_mag <- predict.lm(mag_model, newdata = US_by_year)
+
+mag_v_temp <- plot_ly(data = US_by_year) %>%
+  add_markers(x = ~avg_temp, y=~mag, type = "scatter", name = "magnitude") %>%
+  add_trace(x = ~avg_temp, y = ~pred_mag, mode = "lines", showlegend = FALSE)
+
+subplot(wid_v_temp, len_v_temp, mag_v_temp, nrows = 3, shareX = TRUE, titleX = TRUE)
+
+```
+
+
+# Geographic distribution of storms appears consistent
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+shinyAppFile("map_app_V2.R")
+```
+
+
+# Summary
+
+## **Conclusions**
+
+- Initial findings suggest tornadoes are becoming more frequent and wider over time
+- Fatalities, injuries, and magnitude have not increased
+- While temperatures have increased, it's not clear that temperature is correlated with severity
+- No obvious change in geographic distribution
+- Even highly local WX reports do not give indications of tornado activity
+
+## **Considerations**
+- Precision of measurement and technology are likely confounding factors
+- More granular weather data is needed
+- In the age of accurate forecasting, property damage may be a more relevant measure of severity than casualties
+
+
+
+
