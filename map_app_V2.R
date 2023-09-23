@@ -7,6 +7,7 @@ library(RColorBrewer)
 library(lubridate)
 library(jsonlite)
 library(httr)
+library(shinythemes)
 
 #set working directory
 setwd("/Users/faculty/Documents/UMASS/STAT 697V/Final Presentation")
@@ -82,20 +83,19 @@ geo <-
 
 #shiny ui
 ui <- fluidPage(
+  theme = shinytheme("slate"),
   titlePanel("Tornadoes in the US since 1950"),
   sidebarLayout(
     sidebarPanel(
-      sliderInput("year", "Year", min = 1950, max = 2021, value = 1950, animate = TRUE, sep = ""),
-      # verbatimTextOutput("selected"), move to main panel
-      # verbatimTextOutput("weather") move to main panel
+      sliderInput("year", "Year", min = 1950, max = 2021, value = 1970, animate = TRUE, sep = ""),
       tags$head(tags$style("#tor_map{height:70vh !important;}")),
       tags$head(tags$style("#selected{height:30vh !important;}")),
+      textOutput("instructions")
     ),
     
     mainPanel(
       plotlyOutput("tor_map"),
-      verbatimTextOutput("selected")#,
-      # verbatimTextOutput("weather") # redundant
+      verbatimTextOutput("selected")
     )
   )
 )
@@ -323,6 +323,9 @@ server <- function(input, output){
     }
   })
   
+  output$instructions <- renderText({
+    "Click on a storm to see specific weather info for that location and date (no weather data available before 1970)"
+  })
 
 }
 
