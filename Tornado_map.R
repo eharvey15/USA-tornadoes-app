@@ -82,7 +82,7 @@ geo <-
 
 #shiny ui
 ui <- fluidPage(
-  theme = shinytheme("slate"),
+  theme = shinytheme("cosmo"),
   titlePanel("Tornadoes in the US since 1950"),
   sidebarLayout(
     sidebarPanel(
@@ -94,7 +94,8 @@ ui <- fluidPage(
     
     mainPanel(
       plotlyOutput("tor_map"),
-      verbatimTextOutput("selected")
+      tableOutput("selected_part1"),
+      tableOutput("selected_part2")
     )
   )
 )
@@ -311,14 +312,27 @@ server <- function(input, output){
   })
   
  #print the weather data
-  output$selected <- renderPrint({
-   
+  output$selected_part1 <- renderTable({
     selected_ID <- event_data("plotly_click")$customdata
     if (length(selected_ID) > 0) {
       weather_call <- df %>% filter(ID == selected_ID) %>% select(date, slat, slon)
-      print(weather_call)
       weather <- get_weather_data(weather_call$date, weather_call$slat, weather_call$slon)
-      print(weather)
+      if(ncol(weather) > 1) {
+        weather_part1 <- weather[, 1:(ncol(weather)/2)]  # First half of the columns
+        return(weather_part1)
+      }
+    }
+  })
+  
+  output$selected_part2 <- renderTable({
+    selected_ID <- event_data("plotly_click")$customdata
+    if (length(selected_ID) > 0) {
+      weather_call <- df %>% filter(ID == selected_ID) %>% select(date, slat, slon)
+      weather <- get_weather_data(weather_call$date, weather_call$slat, weather_call$slon)
+      if(ncol(weather) > 1) {
+        weather_part2 <- weather[, ((ncol(weather)/2) + 1):ncol(weather)]  # Second half of the columns
+        return(weather_part2)
+      }
     }
   })
   
